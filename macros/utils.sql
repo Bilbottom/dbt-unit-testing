@@ -76,7 +76,7 @@
 {% macro model_node (model_name) %}
   {% set node = nil
       | default(dbt_unit_testing.graph_node_by_prefix("model", model_name))
-      | default(dbt_unit_testing.graph_node_by_prefix("snapshot", model_name)) 
+      | default(dbt_unit_testing.graph_node_by_prefix("snapshot", model_name))
       | default(dbt_unit_testing.graph_node_by_prefix("seed", model_name)) %}
   {% if not node %}
     {{ dbt_unit_testing.raise_error("Node " ~ model.package_name ~ "." ~ model_name ~ " not found.") }}
@@ -170,3 +170,42 @@
 {% macro raise_error(error_message) %}
   {{ exceptions.raise_compiler_error('\x1b[31m' ~ error_message ~ '\x1b[0m') }}
 {% endmacro %}
+
+
+{% macro node_name(node) %}
+  {#-
+    Return the database object name (without prefixes) for the node.
+  -#}
+    {%- if node.resource_type == "source" %}
+        {% set name = node.identifier %}
+    {%- elif node.resource_type == "snapshot" %}
+        {%- if node.config.alias is not none %}
+            {% set name = node.config.alias %}
+        {%- else %}
+            {% set name = node.name %}
+        {%- endif %}
+    {%- else %}
+        {% set name = node.name %}
+    {%- endif %}
+
+    {{ return(name) }}
+{% endmacro %}
+
+{% macro model_reference(node) %}
+    {{ return(adapter.dispatch("model_reference", "dbt_unit_testing")(node)) }}
+{% endmacro %}
+
+{% macro default__model_reference(node) -%}
+    {{ return(
+        dbt_unit_testing.quote_identifier(node.database)
+        ~ '.' ~ dbt_unit_testing.quote_identifier(node.schema)
+        ~ '.' ~ dbt_unit_testing.quote_identifier(dbt_unit_testing.node_name(node))
+    ) }}
+{%- endmacro %}
+
+{% macro sqlite__model_reference(node) -%}
+    {{ return(
+        dbt_unit_testing.quote_identifier(node.schema)
+        ~ '.' ~ dbt_unit_testing.quote_identifier(dbt_unit_testing.node_name(node))
+    ) }}
+{%- endmacro %}
